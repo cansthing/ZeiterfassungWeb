@@ -1,0 +1,44 @@
+﻿@* @using System.Globalization
+@using ApexCharts
+@using ZeiterfassungWeb.Data.Models  
+@using System.Collections.Generic
+
+
+
+<ApexChart TItem="DailyWork"
+           Title="Arbeits- & Pausenzeit pro Wochentag"
+           Width="700"
+           Height="400">
+
+    <!-- Arbeitszeit-Serie -->
+    <ApexBarSeries TItem="DailyWork"
+                   Name="Arbeitszeit"
+                   Items="@Data"
+                   XValue="dw => dw.WeekdayName"
+                   YValue="dw => dw.TotalWorkTime.TotalHours" />
+
+    <!-- Pausenzeit-Serie -->
+    <ApexBarSeries TItem="DailyWork"
+                   Name="Pausenzeit"
+                   Items="@Data"
+                   XValue="dw => dw.WeekdayName"
+                   YValue="dw => dw.TotalBreakTime.TotalHours" />
+
+    <!-- Optionen für gestapeltes Layout -->
+    <ApexChartOptions TItem="DailyWork">
+        <ApexChartPlotOptions>
+            <BarOptions Horizontal="false" Stacked="true" />
+        </ApexChartPlotOptions>
+        <ApexChartDataLabels Enabled="true" />
+        <ApexChartLegend Position="top" />
+    </ApexChartOptions>
+
+    <!-- X-Achse mit Wochentagen -->
+    <ApexChartXAxis Categories="@Data.Select(dw => dw.WeekdayName).Distinct().ToList()" />
+</ApexChart>
+
+@code 
+{
+    [Parameter]
+    public List<DailyWork> Data { get; set; } = new();
+} *@

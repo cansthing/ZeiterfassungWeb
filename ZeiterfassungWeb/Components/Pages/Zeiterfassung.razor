@@ -1,0 +1,386 @@
+﻿@page "/zeiterfassung"
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using ZeiterfassungWeb.Data.Models
+@attribute [Authorize]
+@using ZeiterfassungWeb.Data;
+@inject DataService AccessDatabase
+@inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Zeiterfassung</PageTitle>
+
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12 col-md-8">
+            <h1 class="display-5 mb-0" >Zeiterfassung</h1>
+            <small class="text-muted">Zuletzt aktualisiert: @DateTime.Now.ToString("HH:mm:ss")</small>
+        </div>
+        <div class="col-12 col-md-4 d-flex justify-content-md-end align-items-center mt-3 mt-md-0 gap-2">
+            <a @onclick="StartTimeBlock" class="btn btn-success btn-lg">
+                <i class="bi bi-play-circle"></i> Starten
+            </a>
+            <button @onclick="StartBreak" class="btn btn-warning btn-lg">
+                <i class="bi bi-cup-straw"></i> Pause
+            </button>
+            <button @onclick="EndTimeBlock" class="btn btn-danger btn-lg">
+                <i class="bi bi-stop-circle"></i> Feierabend
+            </button>
+        </div>
+    </div>
+
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @message
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+
+    <p>Work: @TimeOfWork.ToString(@"hh\:mm")</p>
+    <p>Break: @TimeOfBreak.ToString(@"hh\:mm")</p>
+
+    @if (currentTimeBlock != null)
+    {
+        <div class="card mb-3 border-info shadow-sm" style="max-width: 420px;">
+            <div class="card-header bg-info text-white d-flex align-items-center">
+                <i class="bi bi-clock-history me-2"></i>
+                <span>Aktueller Block</span>
+                <span class="ms-auto">
+                    <span class="badge rounded-pill @(currentTimeBlock.IsWork ? "bg-success" : "bg-warning text-dark") fs-6">
+                        @(currentTimeBlock.IsWork ? "Arbeit" : "Pause")
+                    </span>
+                </span>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-play-circle me-1"></i>Start</span>
+                    <span>@TimeHelper.ToString(currentTimeBlock.Start,"HH:mm:ss")</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-stop-circle me-1"></i>Zeit</span>
+                    <span>
+                        @(currentTimeBlock.End == null ? TimeHelper.ToString(DateTime.Now - currentTimeBlock.Start,@"hh\:mm\:ss") : TimeHelper.ToString(currentTimeBlock.End - currentTimeBlock.Start,@"hh\:mm\:ss"))
+                    </span>
+                </li>
+                @if (!string.IsNullOrWhiteSpace(currentTimeBlock.Comment))
+                {
+                    <li class="list-group-item">
+                        <i class="bi bi-chat-left-text me-1"></i>
+                        <span class="fw-semibold">Kommentar:</span>
+                        <span class="ms-2">@currentTimeBlock.Comment</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div id="screenshotTarget">
+        <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">Zeiten heute</h4>
+        </div>
+        <div class="card-body p-0">
+            @if (todaysTimeBlocks?.Any() == true)
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Start</th>
+                                <th>Ende</th>
+                                <th>Zeit</th>
+                                <th>Typ</th>
+                                <th>Kommentar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var block in todaysTimeBlocks)
+                            {
+                                <tr>
+                                    <td>@TimeHelper.ToString(block.Start,"HH:mm:ss")</td>
+                                    <td>
+                                        @(block.End == null ? "-" : TimeHelper.ToString(block.End,"HH:mm:ss"))
+                                    </td>
+                                    <td>
+                                        @(block.End == null ? TimeHelper.ToString(DateTime.Now - block.Start,@"hh\:mm\:ss") : TimeHelper.ToString(block.End - block.Start,@"hh\:mm\:ss"))
+                                    </td>
+                                    <td>
+                                        <span class="badge rounded-pill @(block.IsWork ? "bg-success" : "bg-warning text-dark") px-3 py-2 fs-6">
+                                            @(block.IsWork ? "Arbeit" : "Pause")
+                                        </span>
+                                    </td>
+                                    <td>@block.Comment</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="p-4 text-center text-muted">Keine Zeiten für heute gespeichert.</div>
+            }
+        </div>
+    </div>
+    </div>
+</div>
+
+<button class="btn btn-primary" @onclick="TakeScreenshot">Screenshot erstellen</button>
+
+@if (imageDataUrl != null)
+{
+    <h5>Ergebnis:</h5>
+    <img src="@imageDataUrl" style="max-width:100%; border:1px solid #ccc;" />
+}
+
+
+@if (showCommentDialog)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.2)">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Was hast du bisher geschafft?</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCommentDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <input class="form-control form-control-lg" @bind="commentInput" placeholder="Kommentar" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseCommentDialog">Abbrechen</button>
+                    <button class="btn btn-primary" @onclick="SubmitComment">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    private string message = string.Empty;
+    private TimeBlock? currentTimeBlock;
+    private List<TimeBlock> todaysTimeBlocks = new();
+
+    private bool showCommentDialog = false;
+    private string commentInput = string.Empty;
+    private Action<string>? onCommentSubmit;
+
+    private TimeSpan TimeOfWork;
+    private TimeSpan TimeOfBreak;
+
+    private System.Threading.Timer? _timer;
+    private bool _hasRun = false;
+    public ApplicationUser? CurrentUser { get; set; }
+
+    private string? imageDataUrl;
+
+    private async void TakeScreenshot()
+    {
+        imageDataUrl = await JS.InvokeAsync<string>("captureElementAsImage", "screenshotTarget");
+    }
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentUser == null)
+        {
+            var authState = await AuthState.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                string? userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                CurrentUser = await AccessDatabase.GetUserByIdAsync(userId);
+            }
+        }
+        await LoadTodaysTimeBlocks();
+        await LoadCurrentTimeBlock();
+
+        _timer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                StateHasChanged();
+                await Task.Delay(5);
+            });
+        }, null, 1000, 1000);
+
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+
+    private async Task LoadTodaysTimeBlocks()
+    {
+        if (CurrentUser != null)
+            todaysTimeBlocks = await AccessDatabase.GetTimeBlocksOfToday(CurrentUser.PersonalId);
+
+        TimeOfWork = TimeSpan.FromSeconds(0);
+        TimeOfBreak = TimeSpan.FromSeconds(0);
+        foreach (var block in todaysTimeBlocks)
+        {
+            if (block is Work)
+            {
+                if (block.End == null)
+                {
+                    TimeOfWork += DateTime.Now - block.Start.Value;
+                }
+                else
+                {
+                    TimeOfWork += block.End.Value - block.Start.Value;
+                }
+            }
+            else if (block is Break)
+            {
+                if (block.End == null)
+                {
+                    TimeOfBreak += DateTime.Now - block.Start.Value;
+                }
+                else
+                {
+                    TimeOfBreak += block.End.Value - block.Start.Value;
+                }
+            }
+            else
+            {
+
+            }
+
+        }
+    }
+
+    private async void StartTimeBlock()
+    {
+        if (CurrentUser == null)
+            return;
+        await EndTimeBlock();
+
+        currentTimeBlock = new Work()
+        {
+            Start = DateTime.Now,
+            PersonalId = CurrentUser.PersonalId
+        };
+
+        var result = await AccessDatabase.CreateTimeBlock(currentTimeBlock);
+
+        if (result)
+        {
+            message = "Zeiterfassung gestartet.";
+            await LoadTodaysTimeBlocks();
+            StateHasChanged();
+
+            await Task.Delay(3000);
+            message = null;
+            StateHasChanged();
+
+        }
+    }
+
+    private async Task StartBreak()
+    {
+        if (currentTimeBlock == null)
+        {
+            await LoadCurrentTimeBlock();
+            currentTimeBlock = await AccessDatabase.GetCurrentTimeBlock(CurrentUser?.PersonalId ?? 0);
+            if (currentTimeBlock == null)
+            {
+                message = "Du musst zuerst die Zeiterfassung starten!";
+                return;
+            }
+        }
+        if (currentTimeBlock is Work)
+        {
+            await EndTimeBlock();
+            currentTimeBlock = new Break()
+            {
+                Start = DateTime.Now,
+                PersonalId = CurrentUser?.PersonalId ?? 0
+            };
+            var result = await AccessDatabase.CreateTimeBlock(currentTimeBlock);
+            await LoadTodaysTimeBlocks();
+            StateHasChanged();
+        }
+        else
+        {
+            message = "Du willst eine Pause von der Pause machen????";
+        }
+
+        await Task.Delay(3000);
+        message = null;
+        StateHasChanged();
+
+    }
+
+    private async Task EndTimeBlock()
+    {
+        await LoadCurrentTimeBlock();
+        if (currentTimeBlock == null)
+            return;
+
+        if (currentTimeBlock is Work)
+        {
+            var tcs = new TaskCompletionSource<string?>();
+
+            OpenCommentDialog(comment =>
+            {
+                tcs.SetResult(comment);
+            });
+
+            var commentResult = await tcs.Task;
+
+            if (commentResult == null)
+                return;
+
+            currentTimeBlock.Comment = commentResult;
+        }
+
+        currentTimeBlock.End = DateTime.Now;
+        var result = await AccessDatabase.UpdateTimeBlock(currentTimeBlock);
+        if (result)
+        {
+            message = "Zeiterfassung beendet.";
+            await LoadTodaysTimeBlocks();
+            currentTimeBlock = null;
+            StateHasChanged();
+        }
+
+        await Task.Delay(3000);
+        message = null;
+        StateHasChanged();
+    }
+
+    private void OpenCommentDialog(Action<string> onSubmit)
+    {
+        commentInput = string.Empty;
+        onCommentSubmit = onSubmit;
+        showCommentDialog = true;
+    }
+
+    private void CloseCommentDialog()
+    {
+        showCommentDialog = false;
+        commentInput = string.Empty;
+        onCommentSubmit = null;
+    }
+
+    private void SubmitComment()
+    {
+        showCommentDialog = false;
+        onCommentSubmit?.Invoke(commentInput);
+        commentInput = string.Empty;
+        onCommentSubmit = null;
+    }
+
+    private async Task LoadCurrentTimeBlock()
+    {
+        currentTimeBlock = await AccessDatabase.GetCurrentTimeBlock(CurrentUser?.PersonalId ?? 0);
+    }
+}

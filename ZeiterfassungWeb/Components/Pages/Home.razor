@@ -1,0 +1,150 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using System.Globalization
+@using System.Collections.ObjectModel
+@using ZeiterfassungWeb.Data
+@using ZeiterfassungWeb.Data.Models
+@using ChartJs.Blazor.BarChart;
+@using ChartJs.Blazor.Common.Axes.Ticks;
+@using ChartJs.Blazor.Common.Enums;
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inject AuthenticationStateProvider AuthState
+@inject DataService AccessDatabase
+
+<PageTitle>Dashboard</PageTitle>
+
+<h1>Dashboard</h1>
+
+<div class="container mt-4">
+
+    <!-- Heute -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <i class="bi bi-calendar-day-fill"></i> Heute
+        </div>
+        <div class="card-body">
+            <p><strong>Arbeitszeit:</strong> @(TodayWork.HasValue? TodayWork.Value.ToString(@"hh\:mm") : "-")</p>
+            <p><strong>Pausenzeit:</strong> @(TodayBreak.HasValue? TodayBreak.Value.ToString(@"hh\:mm") : "-")</p>
+        </div>
+    </div>
+
+    <!-- Diese Woche -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-success text-white">
+            <i class="bi bi-calendar-week-fill"></i> Diese Woche
+        </div>
+        <div class="card-body">
+            <p><strong>Arbeitszeit:</strong> @(ThisWeekWork.HasValue? ThisWeekWork.Value.ToString(@"hh\:mm") : "-")</p>
+            <p><strong>Pausenzeit:</strong> @(ThisWeekBreak.HasValue? ThisWeekBreak.Value.ToString(@"hh\:mm") : "-")</p>
+        </div>
+    </div>
+
+    <!-- Dieser Monat -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-warning text-dark">
+            <i class="bi bi-calendar-month-fill"></i> Diesen Monat
+        </div>
+        <div class="card-body">
+            <p><strong>Arbeitszeit:</strong> @(ThisMonthWork.HasValue? ThisMonthWork.Value.ToString(@"hh\:mm") : "-")</p>
+            <p><strong>Pausenzeit:</strong> @(ThisMonthBreak.HasValue? ThisMonthBreak.Value.ToString(@"hh\:mm") : "-")</p>
+        </div>
+    </div>
+
+</div>
+
+
+
+@code
+{
+    private List<DailyWork> Data { get; set; } = new();
+    public BarConfig BarConfig { get; set; }
+    public ApplicationUser? CurrentUser { get; set; }
+    public TimeSpan? TodayWork { get; set; }
+    public TimeSpan? TodayBreak { get; set; }
+
+    public TimeSpan? ThisWeekWork { get; set; }
+    public TimeSpan? ThisWeekBreak { get; set; }
+
+    public TimeSpan? ThisMonthWork { get; set; }
+    public TimeSpan? ThisMonthBreak { get; set; }
+
+    public ObservableCollection<DailyWork> Today { get; set; }
+    public List<DailyWork> Week { get; set; }
+    public ObservableCollection<DailyWork> Month { get; set; }
+
+    // string[]? Weekdays { get; set; }
+
+    // ChartSeries ArbeitszeitSerie { get; set; }
+
+    // ChartSeries PausenzeitSerie { get; set; }
+
+    // List<ChartSeries> Serien { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUser();
+        await LoadTimes();
+        StateHasChanged();
+    }
+
+    async Task LoadCurrentUser()
+    {
+        if (CurrentUser == null)
+        {
+            var authState = await AuthState.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                string? userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+                CurrentUser = await AccessDatabase.GetUserByIdAsync(userId);
+            }
+        }
+    }
+
+    async Task LoadTimes()
+    {
+        if(CurrentUser == null)
+        {
+            await LoadCurrentUser();
+        }
+        //  Today
+        DailyWork? today = await AccessDatabase.GetDailyWork(CurrentUser.PersonalId, DateTime.Today);
+        if (today != null)
+        {
+            TodayWork = today.TotalWorkTime;
+            TodayBreak = today.TotalBreakTime;
+        }
+        else
+        {
+            TodayWork = TimeSpan.Zero;
+            TodayBreak = TimeSpan.Zero;
+        }
+        //  Week
+        var week = await AccessDatabase.GetDailyWorkWeek(CurrentUser.PersonalId, ISOWeek.GetWeekOfYear(DateTime.Today),DateTime.Today.Year );
+        if(week != null)
+        {
+            ThisWeekWork = week.Aggregate(TimeSpan.Zero, (summe, tag) => summe + tag.TotalWorkTime);
+            ThisWeekBreak = week.Aggregate(TimeSpan.Zero, (summe, tag) => summe + tag.TotalBreakTime);
+        }
+        else
+        {
+            ThisWeekWork = TimeSpan.Zero;
+            ThisWeekBreak = TimeSpan.Zero;
+        }
+        //  Month
+        var month = await AccessDatabase.GetDailyWorkMonth(CurrentUser.PersonalId, DateTime.Today.Month, DateTime.Today.Year);
+        if (month != null)
+        {
+            ThisMonthWork = month.Aggregate(TimeSpan.Zero, (summe, tag) => summe + tag.TotalWorkTime);
+            ThisMonthBreak = month.Aggregate(TimeSpan.Zero, (summe, tag) => summe + tag.TotalBreakTime);
+        }
+        else
+        {
+            ThisMonthWork = TimeSpan.Zero;
+            ThisMonthBreak = TimeSpan.Zero;
+        }
+    }
+}

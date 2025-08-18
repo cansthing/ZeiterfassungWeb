@@ -1,0 +1,32 @@
+﻿@page "/auth"
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@using Microsoft.AspNetCore.Authorization
+
+@attribute [Authorize]
+
+<PageTitle>Auth</PageTitle>
+
+<h1>You are authenticated </h1>
+
+<AuthorizeView>
+    Hello @context.User.Identity?.Name!
+    @* <a class="btn btn-outline-primary" @onclick="SaveAuthState">
+        CLick me!
+    </a>
+    <a class="btn btn-outline-primary" @onclick="Nix">Testen</a> *@
+</AuthorizeView>
+
+@code {
+    // public AuthenticationState MyProperty { get; set; }
+
+    // async Task SaveAuthState()
+    // {
+    //     MyProperty = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    // }
+
+    // void Nix()
+    // {
+    //     // Tu hier etwas anderes
+    // }
+}
