@@ -22,9 +22,6 @@ namespace ZeiterfassungWeb.Data
             modelBuilder.Entity<Break>();
             modelBuilder.Entity<Work>();
         }
-
-
-
     }
 
 }
